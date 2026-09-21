@@ -1,0 +1,31 @@
+- name: Запустить Kibana
+  hosts: kibana_servers
+  become: true
+  vars:
+    es_version: "8.19.0"	# как elasticsearch
+    es_host_ip: "{{ lookup('file', 'es_server_private_ip.txt') | trim }}"
+    es_kibana_system_user: "kibana_system"
+    es_kibana_system_password: "{{ lookup('file', 'es_kibana_system_password.txt') | trim }}"
+
+  tasks:
+    - name: Проверить что служба Docker запущена
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Запустить контейнер Kibana (выполняется долго)
+      community.docker.docker_container:
+        name: kibana
+        image: "docker.elastic.co/kibana/kibana:{{ es_version }}"
+        state: started
+        restart_policy: always
+        recreate: false
+        published_ports:
+          - "0.0.0.0:5601:5601"
+        env:
+          ELASTICSEARCH_HOSTS: "http://{{ es_host_ip }}:9200"
+          ELASTICSEARCH_USERNAME: "{{ es_kibana_system_user }}"
+          ELASTICSEARCH_PASSWORD: "{{ es_kibana_system_password }}"
+          ELASTICSEARCH_SSL_VERIFICATIONMODE: "none"
+          SERVER_HOST: "0.0.0.0"

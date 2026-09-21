@@ -1,0 +1,100 @@
+---
+- name: Добавить хосты в Zabbix
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_connection: httpapi
+    ansible_network_os: community.zabbix.zabbix
+    ansible_host: "{{ lookup('file', 'zabbix_server_public_ip.txt') | trim }}"		# Zabbix server
+    ansible_httpapi_port: 80
+    ansible_httpapi_use_ssl: false
+    ansible_httpapi_validate_certs: false
+    ansible_user: "Admin"
+    ansible_httpapi_pass: "{{ lookup('file', 'zabbix_server_password.txt') | trim }}"
+
+  tasks:
+    - name: Добавить хост bastion
+      community.zabbix.zabbix_host:
+        host_name: "bastion"
+        visible_name: "Server bastion"
+        interfaces:
+          - type: 1
+            main: 1
+            useip: 0
+            ip: ""
+            dns: "bastion"
+            port: "10050"
+        host_groups:
+          - "Linux servers"
+        link_templates:
+          - Linux by Zabbix agent
+        state: present
+
+    - name: Добавить хост web-a
+      community.zabbix.zabbix_host:
+        host_name: "web-a"
+        visible_name: "Server web-a"
+        interfaces:
+          - type: 1
+            main: 1
+            useip: 0
+            ip: ""
+            dns: "web-a"
+            port: "10050"
+        host_groups:
+          - "Linux servers"
+        link_templates:
+          - Linux by Zabbix agent
+        state: present
+
+    - name: Добавить хост web-b
+      community.zabbix.zabbix_host:
+        host_name: "web-b"
+        visible_name: "Server web-b"
+        interfaces:
+          - type: 1
+            main: 1
+            useip: 0
+            ip: ""
+            dns: "web-b"
+            port: "10050"
+        host_groups:
+          - "Linux servers"
+        link_templates:
+          - Linux by Zabbix agent
+        state: present
+
+    - name: Добавить хост kibana
+      community.zabbix.zabbix_host:
+        host_name: "kibana"
+        visible_name: "Server kibana"
+        interfaces:
+          - type: 1
+            main: 1
+            useip: 0
+            ip: ""
+            dns: "kibana"
+            port: "10050"
+        host_groups:
+          - "Linux servers"
+        link_templates:
+          - Linux by Zabbix agent
+        state: present
+
+    - name: Добавить хост es
+      community.zabbix.zabbix_host:
+        host_name: "es"
+        visible_name: "Server es"
+        interfaces:
+          - type: 1
+            main: 1
+            useip: 0
+            ip: ""
+            dns: "es"
+            port: "10050"
+        host_groups:
+          - "Linux servers"
+        link_templates:
+          - Linux by Zabbix agent
+        state: present

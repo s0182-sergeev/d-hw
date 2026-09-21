@@ -1,0 +1,66 @@
+---
+- name: Установить Docker
+  hosts: web_servers:elastic_servers:kibana_servers
+  become: yes
+
+  tasks:
+    - name: Установить необходимые системные пакеты
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - gnupg
+        state: present
+        update_cache: yes
+      register: apt_result
+      until: apt_result is success
+      retries: 5
+      delay: 10
+
+    - name: Добавить Docker GPG ключ
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      register: apt_key_result
+      until: apt_key_result is success
+      retries: 5
+      delay: 10
+
+    - name: Добавить репозиторий Docker
+      ansible.builtin.apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+        state: present
+      register: apt_result
+      until: apt_result is success
+      retries: 5
+      delay: 10
+
+    - name: Установить пакет Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: latest
+        update_cache: yes
+      register: apt_result
+      until: apt_result is success
+      retries: 5
+      delay: 10
+
+    - name: Добавить пользователя в группу docker
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    - name: Разрешить автозапуск службы Docker и стартовать ее
+      ansible.builtin.systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Сбросить текущее SSH-соединение, чтобы подключиться с правами группы docker
+      ansible.builtin.meta: reset_connection

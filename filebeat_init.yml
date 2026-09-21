@@ -1,0 +1,21 @@
+---
+- name: Запустить Filebeat с командой настройки kibana и es (дашборды)
+  hosts: web-a
+  become: true
+  tasks:
+    - name: Выполнить однократную команду с одного веб-сервера (пусть web-a), выполняется несколько минут!
+      community.docker.docker_container_exec:
+        container: filebeat
+        user: root
+        argv:
+          - filebeat
+          - setup
+          - "-e"
+      register: setup_result
+      # Команда setup может выполняться около 1-2 минут, увеличиваем таймаут
+      #async: 120
+      poll: 5
+
+    - name: Отобразить логи выполнения команды
+      ansible.builtin.debug:
+        var: setup_result.stdout_lines

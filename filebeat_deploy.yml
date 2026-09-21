@@ -1,0 +1,45 @@
+- name: Развернуть Filebeat
+  hosts: web_servers
+  become: true
+  vars:
+    es_version: "8.19.0"	# как elasticsearch
+    es_host_ip: "{{ lookup('file', 'es_server_private_ip.txt') | trim }}"
+    es_elastic_user: "elastic"
+    es_elastic_password: "{{ lookup('file', 'es_elastic_password.txt') | trim }}"
+
+  tasks:
+    - name: Проверить что служба Docker запущена
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Создать директорию для конфигурации Filebeat
+      ansible.builtin.file:
+        path: /etc/filebeat
+        state: directory
+        mode: '0755'
+
+    - name: Скопировать конфигурационный файл filebeat.yml
+      ansible.builtin.template:
+        src: filebeat.yml.j2
+        dest: /etc/filebeat/filebeat.yml
+        mode: '0600' # Filebeat требует строгие права на конфиг
+        owner: root
+        group: root
+
+    - name: Запустить контейнер Filebeat
+      community.docker.docker_container:
+        name: filebeat
+        image: "docker.elastic.co/beats/filebeat:{{ es_version }}"
+        state: started
+        restart_policy: always
+        recreate: false
+        user: root # Требуется для чтения логов хоста, если у них строгие права
+        volumes:
+          # Пробрасываем конфиг
+          - /etc/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+          # Пробрасываем логи Nginx с хоста внутрь контейнера
+          - /var/log/nginx:/var/log/nginx:ro
+          # Пробрасываем данные Filebeat, чтобы он запоминал, где закончил чтение
+          - filebeat_data:/usr/share/filebeat/data

@@ -1,0 +1,119 @@
+---
+- name: Развернуть Elasticsearch
+  hosts: elastic_servers
+  gather_facts: false
+  become: true
+  vars:
+    es_version: 8.19.0
+    es_data_dir: /var/lib/elasticsearch/data	# Путь для хранения данных на хост-системе
+
+  tasks:
+    - name: Проверить что служба Docker запущена
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Создать директории для данных Elasticsearch с нужными правами
+      file:
+        path: "{{ es_data_dir }}"
+        state: directory
+        owner: 1000
+        group: 1000
+        mode: '0775'
+
+    - name: Увеличить vm.max_map_count (требование Elasticsearch)
+      sysctl:
+        name: vm.max_map_count
+        value: '262144'
+        state: present
+        reload: yes
+
+    - name: Запустить контейнер Elasticsearch
+      docker_container:
+        name: elasticsearch
+        image: "docker.elastic.co/elasticsearch/elasticsearch:{{ es_version }}"
+        state: started
+        restart_policy: always
+        recreate: false
+        published_ports:
+          - "9200:9200"
+          - "9300:9300"
+        volumes:
+          - "{{ es_data_dir }}:/usr/share/elasticsearch/data"
+        env:
+          discovery.type: "single-node"
+          xpack.security.enabled: "true"
+          xpack.security.http.ssl.enabled: "false"
+          xpack.security.transport.ssl.enabled: "false"
+          network.host: "0.0.0.0"
+          ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+
+
+- name: Переустановить пароли пользователей Elasticsearch
+  hosts: elastic_servers
+  become: true
+  vars:
+    es_container_name: "elasticsearch"
+    es_reset_password_util: "/usr/share/elasticsearch/bin/elasticsearch-reset-password"
+    es_elastic_user: "elastic"
+    es_elastic_password_file: "es_elastic_password.txt"
+    es_kibana_system_user: "kibana_system"
+    es_kibana_system_password_file: "es_kibana_system_password.txt"
+
+  tasks:
+    - name: Проверить существование файла с паролем пользователя elastic
+      ansible.builtin.stat:
+        path: "{{ es_elastic_password_file }}"
+      register: file_status_elastic
+
+    - name: Сбросить пароль пользователя elastic
+      ansible.builtin.command:
+        cmd: "docker exec {{ es_container_name }} {{ es_reset_password_util }} -u {{ es_elastic_user }} -b"
+      register: reset_output
+      changed_when: true
+      until: reset_output.rc == 0
+      retries: 10
+      delay: 5
+      when: not file_status_elastic.stat.exists
+
+    - name: Прочитать пароль из stdout
+      ansible.builtin.set_fact:
+        elastic_password: "{{ reset_output.stdout | regex_search('New value: (.+)$', '\\1') | first }}"
+      when: not file_status_elastic.stat.exists
+
+    - name: Сохранить пароль в локальный файл
+      ansible.builtin.copy:
+        content: "{{ elastic_password }}"
+        dest: "{{ es_elastic_password_file }}"
+      delegate_to: localhost
+      become: false
+      when: not file_status_elastic.stat.exists
+
+    - name: Проверить существование файла с паролем пользователя kibana_system
+      ansible.builtin.stat:
+        path: "{{ es_kibana_system_password_file }}"
+      register: file_status_kibana_system
+
+    - name: Сбросить пароль пользователя kibana_system
+      ansible.builtin.command:
+        cmd: "docker exec {{ es_container_name }} {{ es_reset_password_util }} -u {{ es_kibana_system_user }} -b"
+      register: reset_output
+      changed_when: true
+      until: reset_output.rc == 0
+      retries: 10
+      delay: 5
+      when: not file_status_kibana_system.stat.exists
+
+    - name: Прочитать пароль из stdout
+      ansible.builtin.set_fact:
+        kibana_system_password: "{{ reset_output.stdout | regex_search('New value: (.+)$', '\\1') | first }}"
+      when: not file_status_kibana_system.stat.exists
+
+    - name: Сохранить пароль в локальный файл
+      ansible.builtin.copy:
+        content: "{{ kibana_system_password }}"
+        dest: "{{ es_kibana_system_password_file }}"
+      delegate_to: localhost
+      become: false
+      when: not file_status_kibana_system.stat.exists

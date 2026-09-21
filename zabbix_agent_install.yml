@@ -1,0 +1,63 @@
+---
+- name: Установить Zabbix Agent
+  hosts:
+    - bastion
+    - web_servers
+    - elastic_servers
+    - kibana_servers
+  become: yes
+  vars:
+    ubuntu_version: "24.04"
+    zabbix_version: "7.0"
+    zabbix_server_ip: "{{ lookup('file', 'zabbix_server_private_ip.txt') | trim }}"
+    zabbix_agent_hostname: "{{ ansible_hostname }}"
+    
+  tasks:
+    - name: Установить репозиторий Zabbix (APT)
+      ansible.builtin.apt:
+        deb: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_{{ zabbix_version }}+ubuntu{{ ubuntu_version }}_all.deb"
+        state: present
+      register: zabbix_repo
+
+    - name: Обновить apt кэш
+      ansible.builtin.apt:
+        update_cache: yes
+      when: zabbix_repo.changed
+
+    - name: Установить zabbix-agent
+      ansible.builtin.apt:
+        name: zabbix-agent
+        state: present
+
+    - name: Настроить zabbix_agentd.conf (Server)
+      ansible.builtin.lineinfile:
+        path: /etc/zabbix/zabbix_agentd.conf
+        regexp: '^Server='
+        line: "Server={{ zabbix_server_ip }}"
+      notify: restart zabbix-agent
+
+    - name: Настроить zabbix_agentd.conf (ServerActive)
+      ansible.builtin.lineinfile:
+        path: /etc/zabbix/zabbix_agentd.conf
+        regexp: '^ServerActive='
+        line: "ServerActive={{ zabbix_server_ip }}"
+      notify: restart zabbix-agent
+
+    - name: Настроить zabbix_agentd.conf (Hostname)
+      ansible.builtin.lineinfile:
+        path: /etc/zabbix/zabbix_agentd.conf
+        regexp: '^Hostname='
+        line: "Hostname={{ zabbix_agent_hostname }}"
+      notify: restart zabbix-agent
+
+    - name: Проверить, что zabbix-agent работает и включен
+      ansible.builtin.systemd:
+        name: zabbix-agent
+        state: restarted
+        enabled: yes
+
+  handlers:
+    - name: restart zabbix-agent
+      ansible.builtin.systemd:
+        name: zabbix-agent
+        state: restarted

@@ -1,0 +1,165 @@
+---
+- name: Развернуть Zabbix
+  hosts: zabbix_servers
+  become: yes
+  vars:
+    ubuntu_version: "24.04"
+    zabbix_version: "7.0"
+    zabbix_dbhost: "localhost"
+    zabbix_dbname: "zabbix"
+    zabbix_dbuser: "zabbix"
+    zabbix_dbpassword: "{{ lookup('file', 'zabbix_server_db_password.txt') | trim }}"
+    zabbix_adminname: "Admin"
+    zabbix_adminpassword: "{{ lookup('file', 'zabbix_server_password.txt') | trim }}"
+    zabbix_adminpassword_hash: "{{ lookup('file', 'zabbix_server_password_hash.txt') | trim }}"
+
+  tasks:
+    - name: Скачать пакет из репозитория
+      ansible.builtin.get_url:
+        url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest+ubuntu{{ ubuntu_version }}_all.deb"
+        dest: "/tmp/zabbix-release_latest+ubuntu{{ ubuntu_version }}_all.deb"
+        mode: '0644'
+      retries: 5
+      delay: 10
+      timeout: 15
+
+    - name: Выполнить dpkg -i
+      ansible.builtin.apt:
+        deb: "/tmp/zabbix-release_latest+ubuntu{{ ubuntu_version }}_all.deb"
+        state: present
+      register: apt_result
+      until: apt_result is success
+      retries: 5
+      delay: 10
+
+    - name: Выполнить apt update
+      ansible.builtin.apt:
+        update_cache: yes
+      register: apt_result
+      until: apt_result is success
+      retries: 5
+      delay: 10
+
+    - name: Установить PostgreSQL, Apache и необходимые пакеты PHP
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+          - python3-psycopg2 # Требуется для модулей ansible postgresql_*
+          - apache2
+          - php8.3-pgsql
+        state: present
+      register: apt_result
+      until: apt_result is success
+      retries: 5
+      delay: 10
+
+    - name: Создать пользователя в PostgreSQL
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: "{{ zabbix_dbuser }}"
+        password: "{{ zabbix_dbpassword }}"
+        role_attr_flags: "LOGIN"
+
+    - name: Создать БД Zabbix в PostgreSQL
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: "{{ zabbix_dbname }}"
+        owner: "{{ zabbix_dbuser }}"
+
+    - name: Установить сервер Zabbix
+      ansible.builtin.apt:
+        name:
+          - zabbix-server-pgsql
+          - zabbix-frontend-php
+          - zabbix-apache-conf
+          - zabbix-sql-scripts
+          - zabbix-agent2
+        state: present
+      register: apt_result
+      until: apt_result is success
+      retries: 5
+      delay: 10
+
+    - name: Проверить, что существует схема Zabbix в БД PostgreSQL
+      become_user: postgres
+      ansible.builtin.command: "psql -d {{ zabbix_dbname }} -c \"SELECT 'schema_exists' FROM information_schema.tables WHERE table_name = 'users';\""
+      register: schema_check_cli
+      changed_when: false
+
+    - name: Загрузить схему БД Zabbix в БД PostgreSQL
+      ansible.builtin.shell: |
+        zcat /usr/share/zabbix-sql-scripts/postgresql/server.sql.gz | psql -U {{ zabbix_dbuser }} -d {{ zabbix_dbname }} -h {{ zabbix_dbhost }}
+      environment:
+        PGPASSWORD: "{{ zabbix_dbpassword }}"
+      # Если строка 'schema_exists' отсутствует в выводе терминала, импортируем схему
+      when: "'schema_exists' not in schema_check_cli.stdout"
+
+    - name: Настроить пароль пользователя БД Zabbix
+      ansible.builtin.lineinfile:
+        path: /etc/zabbix/zabbix_server.conf
+        regexp: '^#? DBPassword='
+        line: "DBPassword={{ zabbix_dbpassword }}"
+      notify: Restart Zabbix Server
+
+    - name: Создать файл zabbix.conf.php2
+      ansible.builtin.file:
+        path: /etc/zabbix/web
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Заполнить файл zabbix.conf.php2 (для обхода Setup Wizard Zabbix)
+      ansible.builtin.copy:
+        dest: /etc/zabbix/web/zabbix.conf.php
+        owner: www-data
+        group: www-data
+        mode: '0640'
+        content: |
+          <?php
+          global $DB;
+          $DB['TYPE']     = 'POSTGRESQL';
+          $DB['SERVER']   = '{{ zabbix_dbhost }}';
+          $DB['PORT']     = '5432';
+          $DB['DATABASE'] = '{{ zabbix_dbname }}';
+          $DB['USER']     = '{{ zabbix_dbuser }}';
+          $DB['PASSWORD'] = '{{ zabbix_dbpassword }}';
+          $DB['ENCRYPTION'] = false;
+          $ZBX_SERVER      = '{{ zabbix_dbhost }}';
+          $ZBX_SERVER_PORT = '10051';
+          $ZBX_SERVER_NAME = 'Zabbix Server';
+          $IMAGE_FORMAT_DEFAULT = IMAGE_FORMAT_PNG;
+      notify: Restart Apache
+
+    - name: Установить новый пароль логина Admin
+      # select * from users;
+      become_user: postgres
+      ansible.builtin.command: "psql -d {{ zabbix_dbname }} -c \"update users set passwd='{{ zabbix_adminpassword_hash }}' where username='{{ zabbix_adminname }}'; select '{{ zabbix_adminname }}', '{{ zabbix_adminpassword }}';\""
+      register: sql_result
+
+    - name: Вывести результат выполнения команды установки нового пароля
+      ansible.builtin.debug:
+        msg: "{{ sql_result.stdout }}"
+
+    - name: Запустить службы и включить их в автозагрузку
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - postgresql
+        - zabbix-server
+        - zabbix-agent2
+        - apache2
+
+  handlers:
+    - name: Restart Zabbix Server
+      ansible.builtin.service:
+        name: zabbix-server
+        state: restarted
+
+    - name: Restart Apache
+      ansible.builtin.service:
+        name: apache2
+        state: restarted

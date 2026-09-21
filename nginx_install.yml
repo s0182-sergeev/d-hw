@@ -1,0 +1,99 @@
+---
+- name: Установить и настроить Nginx
+  hosts: web_servers
+  become: true
+  tasks:
+
+    - name: Установить Nginx
+      ansible.builtin.package:
+        name: nginx
+        state: present
+        update_cache: yes
+      register: apt_result
+      until: apt_result is success
+      retries: 5
+      delay: 10
+
+    - name: Создать конфигурацию сайта Nginx
+      ansible.builtin.copy:
+        content: |
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+
+              root /var/www/html;
+              index index.html;
+
+              server_name _;
+
+              # Корень сайта отдает дефолтную страницу
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+
+              # Адрес для шаблона Zabbix "Nginx by HTTP"
+              location /basic_status {
+                  stub_status;
+                  
+                  allow {{ lookup('file', 'zabbix_server_private_ip.txt') | trim }};
+                  allow 127.0.0.1;
+                  allow ::1;
+                  
+                  # Запрещаем всем остальным
+                  deny all;
+                  access_log off;
+              }
+          }
+        dest: /etc/nginx/sites-available/default
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart Nginx
+
+    - name: Проверить, что конфигурация включена
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/default
+        dest: /etc/nginx/sites-enabled/default
+        state: link
+      notify: Restart Nginx
+
+    - name: Запустить и включить в автозагрузку Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Создать HTML-страницу сайта
+      ansible.builtin.copy:
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Welcome to nginx!</title>
+              <style>
+                  body { font-family: sans-serif; text-align: center; margin-top: 50px; }
+              </style>
+          </head>
+          <body>
+              <h1>Success!</h1>
+              <p>This is {{ ansible_facts['hostname'] }}, {{ ansible_default_ipv4.address }}</p>
+          </body>
+          </html>
+        dest: /var/www/html/index.html
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: Вывести что сайт отвечает
+      ansible.builtin.shell: curl http://localhost
+      register: result
+
+    - name: Показать ответ сайта
+      ansible.builtin.debug:
+        var: result.stdout
+
+  handlers:
+    - name: Restart Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
