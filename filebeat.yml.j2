@@ -1,0 +1,24 @@
+name: "{{ inventory_hostname }}" 
+
+filebeat.inputs: []
+
+filebeat.modules:
+  - module: nginx
+    access:
+      enabled: true
+      var.paths: ["/var/log/nginx/access.log"]
+    error:
+      enabled: true
+      var.paths: ["/var/log/nginx/error.log"]
+
+# Настройка подключения к Kibana (нужна для загрузки дашбордов)
+setup.kibana:
+  host: "http://kibana:5601"
+  username: "{{ es_elastic_user }}"
+  password: "{{ es_elastic_password }}"
+
+# Настройка отправки данных в Elasticsearch
+output.elasticsearch:
+  hosts: ["http://es:9200"]
+  username: "{{ es_elastic_user }}"
+  password: "{{ es_elastic_password }}"
