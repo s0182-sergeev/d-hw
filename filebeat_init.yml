@@ -3,7 +3,7 @@
   hosts: web-a
   become: true
   tasks:
-    - name: Выполнить однократную команду с одного веб-сервера (пусть web-a), выполняется несколько минут!
+    - name: Выполнить однократную команду с одного веб-сервера (web-a), выполняется несколько минут!
       community.docker.docker_container_exec:
         container: filebeat
         user: root

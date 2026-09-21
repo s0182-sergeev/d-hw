@@ -69,13 +69,13 @@ resource "yandex_alb_load_balancer" "balancer1" {
 
   allocation_policy {
     location {
-      subnet_id = yandex_vpc_subnet.snet["subnet-a"].id
-      zone_id   = yandex_vpc_subnet.snet["subnet-a"].zone
+      subnet_id       = yandex_vpc_subnet.snet["subnet-a"].id
+      zone_id         = yandex_vpc_subnet.snet["subnet-a"].zone
       disable_traffic = false
     }
     location {
-      subnet_id = yandex_vpc_subnet.snet["subnet-b"].id
-      zone_id   = yandex_vpc_subnet.snet["subnet-b"].zone
+      subnet_id       = yandex_vpc_subnet.snet["subnet-b"].id
+      zone_id         = yandex_vpc_subnet.snet["subnet-b"].zone
       disable_traffic = false
     }
   }

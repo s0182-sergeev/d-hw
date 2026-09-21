@@ -67,32 +67,31 @@ Cоздана ВМ (es), в ней развернута Elasticsearch в кон�
 ### Безопасность инфраструктуры
 
 Доступ terraform в Yandex Cloud настроен по ключу "~/.yandex-cloud_terraform_authorized_key.json"
-на локальном хосте. Файл с ключом находится вне рабочего каталога и не передается в репозиторий github.
+на локальном хосте. Файл с ключом находится вне рабочего каталога и не передается в github.
 
 Доступ ssh на все ВМ настроен по ключу ~/.ssh/id_ed30032026.pub на локальном хосте.
-Terraform копирует файл на ВМ при их создании. Файл с ключом находится вне рабочего каталога и не передается в
-репозиторий github.
+Terraform копирует файл на ВМ при их создании. Файл с ключом находится вне рабочего каталога и не передается в github.
 
 Доступ ansible в базу данных Zabbix настроен с логином zabbix по предустановленному паролю (15 знаков), который хранится
 в файле terraform.tvars. Terraform передает пароль в ansible через локальный файл zabbix_server_db_password.txt.
-В файле .gitignore задана маска, исключающая передачу файла в репозиторий github. 
+В файле .gitignore задана маска, исключающая передачу файла в github. 
 
 Доступ в веб-интерфейс Zabbix настроен с логином Admin по предустановленному паролю (15 знаков), который хранится
 в файле terraform.tvars. Terraform копирует пароль и его хеш (заранее подготовлен) в локальные файлы
 zabbix_server_password.txt и zabbix_server_password_hash.txt.
 Ansible при установке сервера Zabbix читает эти файлы и сохраняет хеш прямым обращением в базу данных Zabbix,
 а также использует этот пароль при регистрации хостов агентов в сервере Zabbix.
-В файле .gitignore задана маска, исключающая передачу файлов в репозиторий github. 
+В файле .gitignore задана маска, исключающая передачу файлов в github. 
 
 Доступ в веб-интерфейс Kibana настроен под логином elastic. Ansible извлекает пароль логина после установки 
 Elasticsearch и записывается в локальный файл es_elastic_password.txt. Ansible читает этот файл при развертывании
 filebeat на веб-серверах.
-В файле .gitignore задана маска, исключающая передачу файла в репозиторий github. 
+В файле .gitignore задана маска, исключающая передачу файла в github. 
 
 Доступ сервера Kibana в сервер Elasticsearch настроен под логином kibana_system. Ansible извлекает пароль логина
 после установки Elasticsearch и записывается в локальный файл es_kibana_system_password.txt.
 Ansible читает этот файл при развертывании сервера Kibana.
-В файле .gitignore задана маска, исключающая передачу файлf в репозиторий github. 
+В файле .gitignore задана маска, исключающая передачу файлf в github. 
 
 ### Конфигурирование Ansible
 
@@ -124,7 +123,7 @@ terraform apply
 - [snapshots.tf](snapshots.tf) - создать snapshots;
 - [variables.tf](variables.tf) - декларировать переменные;
 - [vms.tf](vms.tf) - создать ВМ, вывести на консоль их публичные и внутренние IP-адреса;
-- terraform.tfvars - хранить переменные (не передается в репозиторий).
+- terraform.tfvars - хранить переменные (не передается в github).
 
 Время выполнения команды до 7 мин.
 
@@ -133,12 +132,12 @@ terraform apply
 ansible-playbook nginx_install.yml
 ```
 
-3. Проверить работоспособность балансировщика и веб-серверов:
+3. Проверить работоспособность балансировщика и веб-серверов, создать тестовый трафик:
 ```
 while true; do curl http://<IP балансировщика> ; echo ---------- ; sleep 3; done
 ```
 
-<IP балансировщика> выведен командой "terraform apply" в строке «balancer_public_ip».
+<IP балансировщика> выведен на консоль командой "terraform apply" в строке «balancer_public_ip».
 
 4. Развернуть серверы Elasticsearch и Kibana на ВМ kibana и es:
 ```
@@ -147,7 +146,7 @@ ansible-playbook es_deploy.yml
 ansible-playbook kibana_deploy.yml
 ```
 
-5. Развернуть Filebeat на ВМ web-a и web-b:
+5. Развернуть Filebeat на ВМ web-a и web-b, настроить kibana и es (дашборды):
 ```
 ansible-playbook filebeat_deploy.yml
 ansible-playbook filebeat_init.yml
@@ -156,10 +155,10 @@ ansible-playbook filebeat_init.yml
 
 6. Проверить работоспособность сервера Kibana 'http://<IP сервера Kibana>:5601'
 
-<IP сервера Kibana> выводен командой "terraform apply".
+<IP сервера Kibana> выведен на консоль командой "terraform apply".
 Вход с логином elastic, пароль сохранен в локальном файле es_elastic_password.txt.
 В Stack management/Data views должен быть пункт filebeat-*.
-В Dashboards/[Filebeat Nginx]/"Access and error logs ECS" должны быть графики.
+В Dashboards/"[Filebeat Nginx] Access and error logs ECS" должны быть графики.
 
 7. Установить сервер Zabbix на ВМ zabbix, зарегистрировать хосты, установить агенты Zabbix на всех ВМ:
 ```
